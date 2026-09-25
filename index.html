@@ -2,1334 +2,580 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Live IdioRater - Idiodynamic Classroom Rating System</title>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js for Idiodynamic Trajectory Visualization -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- Chart.js Annotation Plugin for Zero-Baseline & Markers -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Live IdioRater</title>
   
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#eef2ff',
-              500: '#6366f1',
-              600: '#4f46e5',
-              700: '#4338ca',
-            },
-            idioRed: '#ef4444',
-            idioGreen: '#22c55e',
-          },
-          animation: {
-            'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-          }
-        }
-      }
-    }
-  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 
   <style>
-    /* Prevent accidental text selection and bounce-zooming on mobile rapid taps */
-    * {
-      -webkit-tap-highlight-color: transparent;
-    }
     body {
-      touch-action: manipulation;
-      overscroll-behavior-y: none;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    }
-    .touch-btn {
-      user-select: none;
       -webkit-user-select: none;
+      user-select: none;
       touch-action: manipulation;
     }
     .touch-btn:active {
-      transform: scale(0.96);
+      transform: scale(0.97);
     }
-    /* Gauge smooth transition */
-    .gauge-fill {
-      transition: height 0.18s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease;
-    }
-    /* Custom scrollbar for markers list */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.05);
-    }
-    ::-webkit-scrollbar-thumb {
-      background: rgba(100, 116, 139, 0.4);
-      border-radius: 9999px;
+    .safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 1rem);
     }
   </style>
 </head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased overflow-x-hidden">
 
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+  <!-- Permanent Webhook URL -->
+  <script>
+    const PRECONFIGURED_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbziecABebJY_1Mjrn9LaiQHbRSiyUEE0aWETH0GemmisGucLnfZSTv93uogF3iqwLV8/exec";
+    const DECAY_RATE_PER_SEC = 0.50; // Fixed standard return-to-baseline
+    const SCALE_MIN = -5;            // Fixed lower limit
+    const SCALE_MAX = 5;             // Fixed upper limit
+  </script>
 
-  <header class="w-full bg-slate-800/80 backdrop-blur border-b border-slate-700/80 px-4 py-3 sticky top-0 z-40 flex items-center justify-between shadow-md">
-    <div class="flex items-center space-x-2.5">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-emerald-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-        <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+  <!-- Top App Bar -->
+  <header class="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur px-4 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-black text-white shadow-md shadow-indigo-500/30">
+        IR
       </div>
       <div>
-        <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
+        <h1 class="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
           Live IdioRater
-          <span class="text-[10px] uppercase font-mono tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded">v2.1</span>
+          <span class="text-[10px] font-medium bg-emerald-950 text-emerald-400 border border-emerald-800/80 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Drive Linked
+          </span>
         </h1>
-        <p class="text-xs text-slate-400 font-medium truncate max-w-[200px] sm:max-w-xs" id="headerSubtitle">
-          Second-by-Second Dynamic Evaluation
-        </p>
+        <p class="text-[10px] text-slate-400 leading-none">Continuous Dynamic Rating Engine</p>
       </div>
     </div>
 
-    <div class="flex items-center space-x-2">
-      <!-- Active Google Drive Status Pill -->
-      <div id="cloudConnectionBadge" class="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shadow-sm" title="Connected to researcher's Google Drive">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span class="hidden sm:inline">Drive Linked</span>
-        <i data-lucide="check" class="w-3 h-3 sm:hidden"></i>
-      </div>
-      <button id="helpGuideBtn" class="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 rounded-lg transition" title="Instructions & Google Drive Setup">
-        <i data-lucide="help-circle" class="w-5 h-5"></i>
-      </button>
-      <button id="webhookSetupBtn" class="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 rounded-lg transition" title="Google Drive Webhook Config">
-        <i data-lucide="cloud-cog" class="w-5 h-5"></i>
+    <div class="flex items-center gap-2">
+      <button id="showSettingsBtn" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors" title="Configuration">
+        <i data-lucide="settings-2" class="w-4 h-4"></i>
       </button>
     </div>
   </header>
 
-  <main class="flex-1 w-full max-w-2xl mx-auto p-4 flex flex-col justify-center">
-
-    <!-- ========================================== -->
-    <!-- VIEW 1: SETUP & CONFIGURATION SCREEN       -->
-    <!-- ========================================== -->
-    <section id="setupView" class="w-full bg-slate-800/90 border border-slate-700 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5 transition-all">
-      <div class="border-b border-slate-700 pb-3">
-        <h2 class="text-xl font-bold text-white flex items-center gap-2">
-          <i data-lucide="sliders" class="w-5 h-5 text-indigo-400"></i>
-          Session Configuration
-        </h2>
-        <p class="text-xs text-slate-400 mt-1">Configure study parameters before starting your live classroom observation.</p>
-      </div>
-
-      <div class="space-y-4 text-sm">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1" for="participantId">Student / Participant ID *</label>
-            <input type="text" id="participantId" placeholder="e.g., ST-104 or Anon-01" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-medium">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1" for="teacherName">Teacher / Instructor Name</label>
-            <input type="text" id="teacherName" placeholder="e.g., Prof. Sarah Jenkins" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-          </div>
+  <!-- Main Container -->
+  <main class="flex-1 flex flex-col max-w-lg w-full mx-auto p-4 relative">
+    
+    <!-- 1. SETUP VIEW -->
+    <section id="setupView" class="flex-1 flex flex-col justify-center gap-4 py-2">
+      <div class="bg-slate-800/60 border border-slate-700/80 rounded-2xl p-5 shadow-xl space-y-4">
+        <div>
+          <h2 class="text-lg font-bold text-white tracking-tight">Session Setup</h2>
+          <p class="text-xs text-slate-400">Configure participant and context details before starting the rating session.</p>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="space-y-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1" for="courseName">Course / Class Session</label>
-            <input type="text" id="courseName" placeholder="e.g., Applied Linguistics 201" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Participant / Student ID</label>
+            <input type="text" id="participantInput" placeholder="e.g., S-104 or Anonymous" 
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1" for="ratingDimension">Evaluated Dimension</label>
-            <select id="ratingDimension" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-              <option value="Engagement / Interest" selected>Perceived Engagement / Interest</option>
-              <option value="Comprehension / Clarity">Comprehension / Explanatory Clarity</option>
-              <option value="Rapport / Connection">Pedagogical Rapport & Climate</option>
-              <option value="Motivation / Enthusiasm">Motivation & Enthusiasm</option>
-              <option value="Instructional Pace">Instructional Pace (Slow vs. Fast)</option>
-              <option value="Custom">Custom Dimension...</option>
-            </select>
-          </div>
-        </div>
 
-        <div id="customDimensionContainer" class="hidden">
-          <label class="block text-xs font-semibold text-slate-300 mb-1" for="customDimension">Specify Custom Dimension</label>
-          <input type="text" id="customDimension" placeholder="e.g., Communicative Willingness" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Rating Scale Boundary</label>
-            <div class="grid grid-cols-2 gap-2">
-              <button type="button" data-scale="5" class="scale-selector-btn px-3 py-2 rounded-xl border border-indigo-500 bg-indigo-500/20 text-indigo-300 font-semibold text-center text-xs transition">
-                –5 to +5 (Standard)
-              </button>
-              <button type="button" data-scale="10" class="scale-selector-btn px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-semibold text-center text-xs transition">
-                –10 to +10 (Granular)
-              </button>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Course / Context</label>
+              <input type="text" id="courseInput" placeholder="e.g., ELT Seminar" 
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Instructor / Teacher</label>
+              <input type="text" id="teacherInput" placeholder="e.g., Dr. Smith" 
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
             </div>
           </div>
+
           <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1" for="maxDuration">Max Auto-Cap (Minutes)</label>
-            <select id="maxDuration" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500">
-              <option value="15">15 Minutes</option>
-              <option value="30">30 Minutes</option>
-              <option value="45">45 Minutes</option>
-              <option value="60" selected>60 Minutes (Full Class)</option>
-              <option value="90">90 Minutes</option>
-            </select>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Rating Dimension</label>
+            <input type="text" id="dimensionInput" value="Engagement / Rapport" 
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div class="bg-slate-900/80 border border-slate-700/50 rounded-xl p-3 text-xs text-slate-400 space-y-1">
+            <div class="flex justify-between"><span class="font-medium text-slate-300">Scale Boundary:</span> <span class="text-indigo-400 font-bold">-5 to +5 (Fixed)</span></div>
+            <div class="flex justify-between"><span class="font-medium text-slate-300">Decay Speed:</span> <span class="text-indigo-400 font-bold">0.50 units/sec (Fixed)</span></div>
           </div>
         </div>
 
-        <!-- Baseline Gravitational Decay Setting -->
-        <div class="pt-1">
-          <div class="flex items-center justify-between mb-1.5">
-            <label class="block text-xs font-semibold text-slate-300">Baseline Return Decay Rate</label>
-            <span id="decayRateDisplay" class="text-xs font-mono text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded">0.50 units/sec</span>
-          </div>
-          <p class="text-[11px] text-slate-400 mb-2">Gradually pulls ratings back toward 0 (neutral) when idle, matching idiodynamic conventions.</p>
-          <div class="grid grid-cols-4 gap-2">
-            <button type="button" data-decay="0.00" class="decay-preset-btn px-2.5 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 text-xs font-medium hover:border-slate-600 transition text-center">
-              Off (Hold)
-            </button>
-            <button type="button" data-decay="0.25" class="decay-preset-btn px-2.5 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 text-xs font-medium hover:border-slate-600 transition text-center">
-              0.25/s
-            </button>
-            <button type="button" data-decay="0.50" class="decay-preset-btn px-2.5 py-2 rounded-xl border border-indigo-500 bg-indigo-500/20 text-indigo-300 text-xs font-bold transition text-center">
-              0.50/s (Std)
-            </button>
-            <button type="button" data-decay="1.00" class="decay-preset-btn px-2.5 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 text-xs font-medium hover:border-slate-600 transition text-center">
-              1.00/s (Fast)
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="pt-2">
-        <button id="startSessionBtn" class="w-full py-4 px-6 bg-gradient-to-r from-indigo-600 via-indigo-500 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 text-base transition-all transform active:scale-[0.98]">
-          <i data-lucide="play-circle" class="w-6 h-6"></i>
-          <span>Launch Live Rating Session</span>
+        <button id="startSessionBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 text-base transition-all touch-btn">
+          <i data-lucide="play" class="w-5 h-5 fill-current"></i>
+          Start Rating Session
         </button>
-      </div>
-
-      <div id="setupFeedback" class="text-xs text-rose-400 font-medium text-center hidden"></div>
-    </section>
-
-    <!-- ========================================== -->
-    <!-- VIEW 2: LIVE RATING RUNTIME SCREEN         -->
-    <!-- ========================================== -->
-    <section id="liveView" class="w-full flex-col items-center justify-between hidden space-y-4">
-      
-      <!-- Top HUD: Timer, Current Value, Status -->
-      <div class="w-full bg-slate-800/95 border border-slate-700/80 rounded-2xl p-3 sm:p-4 shadow-xl flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-          <div class="relative flex items-center justify-center">
-            <span class="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-emerald-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-          </div>
-          <div>
-            <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">ELAPSED TIME</div>
-            <div id="liveTimer" class="font-mono text-2xl font-black text-white tracking-widest leading-none">00:00</div>
-          </div>
-        </div>
-
-        <!-- Center Dimension & Decay Badges -->
-        <div class="text-center px-1 flex flex-col items-center gap-1">
-          <div class="hidden sm:block">
-            <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">MEASURING</div>
-            <div id="liveDimensionBadge" class="text-xs font-semibold text-indigo-300 truncate max-w-[130px]">Engagement</div>
-          </div>
-          <button id="toggleDecayBtn" type="button" class="px-2 py-0.5 rounded text-[11px] font-mono bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30 transition">
-            Decay: 0.50/s
-          </button>
-        </div>
-
-        <!-- Right Controls: Add Marker & Stop -->
-        <div class="flex items-center space-x-2">
-          <button id="addMarkerBtn" class="flex items-center space-x-1.5 px-3 py-2 bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 rounded-xl text-xs font-semibold transition active:scale-95">
-            <i data-lucide="bookmark-plus" class="w-4 h-4"></i>
-            <span class="hidden xs:inline">Tag Event</span>
-          </button>
-          <button id="stopSessionBtn" class="px-3 py-2 bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30 rounded-xl text-xs font-semibold transition active:scale-95">
-            <i data-lucide="square" class="w-4 h-4 inline-block sm:mr-1"></i>
-            <span class="hidden sm:inline">Finish</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Center Meter / Level Bar with Numerical Readout -->
-      <div class="w-full bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-lg flex flex-col items-center">
-        <div class="w-full flex items-center justify-between text-xs font-bold text-slate-400 px-1 mb-1">
-          <span class="text-rose-400 flex items-center gap-1"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i> NEGATIVE</span>
-          <span class="text-slate-300 font-mono">0 (Neutral Baseline)</span>
-          <span class="text-emerald-400 flex items-center gap-1">POSITIVE <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></span>
-        </div>
-
-        <!-- Dynamic Horizontal Range Indicator -->
-        <div class="w-full relative h-10 bg-slate-950 rounded-xl border border-slate-700 overflow-hidden flex items-center p-1">
-          <!-- Center Divider (Zero line) -->
-          <div class="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-500 z-10"></div>
-          
-          <!-- Positive Bar Fill (grows from 50% rightward) -->
-          <div id="meterBarPos" class="absolute left-1/2 top-1 bottom-1 bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-r-lg transition-all duration-150" style="width: 0%;"></div>
-          
-          <!-- Negative Bar Fill (grows from 50% leftward) -->
-          <div id="meterBarNeg" class="absolute right-1/2 top-1 bottom-1 bg-gradient-to-l from-rose-600 to-rose-400 rounded-l-lg transition-all duration-150" style="width: 0%;"></div>
-          
-          <!-- Moving Indicator Pin with Score Value -->
-          <div id="meterPin" class="absolute top-1 bottom-1 w-10 -ml-5 bg-white text-slate-900 rounded-lg shadow-xl font-mono font-black text-sm flex items-center justify-center transition-all duration-150 z-20" style="left: 50%;">
-            0
-          </div>
-        </div>
-
-        <div class="w-full flex justify-between items-center text-[11px] font-mono text-slate-500 px-1 mt-1.5">
-          <span id="minScaleLabel">–5</span>
-          <div class="flex items-center gap-2">
-            <span id="meterCurrentDescriptor" class="text-slate-300 font-sans font-medium text-xs">Neutral / Balanced</span>
-            <span id="decayVectorBadge" class="hidden text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 animate-pulse">↓ Decaying</span>
-          </div>
-          <span id="maxScaleLabel">+5</span>
-        </div>
-      </div>
-
-      <!-- Giant Primary Touch Action Buttons -->
-      <div class="w-full grid grid-cols-2 gap-3.5 sm:gap-4 h-72 sm:h-80 select-none">
-        <!-- Giant Negative / Red Button -->
-        <button id="decrementBtn" class="touch-btn h-full w-full rounded-3xl bg-gradient-to-b from-rose-500 to-rose-700 active:from-rose-600 active:to-rose-800 border-2 border-rose-400/40 shadow-2xl shadow-rose-900/40 text-white flex flex-col items-center justify-center p-4 transition duration-75 relative overflow-hidden group">
-          <div class="absolute inset-0 bg-white/5 opacity-0 group-active:opacity-100 transition-opacity pointer-events-none"></div>
-          <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-rose-900/40 border border-rose-300/30 flex items-center justify-center mb-3 shadow-inner">
-            <i data-lucide="minus" class="w-10 h-10 sm:w-12 sm:h-12 stroke-[3.5]"></i>
-          </div>
-          <span class="text-xl sm:text-2xl font-black uppercase tracking-wider text-rose-100">Lower</span>
-          <span class="text-[11px] font-medium text-rose-200/90 mt-1 uppercase tracking-widest">Negative / Decrease</span>
-        </button>
-
-        <!-- Giant Positive / Green Button -->
-        <button id="incrementBtn" class="touch-btn h-full w-full rounded-3xl bg-gradient-to-b from-emerald-500 to-emerald-700 active:from-emerald-600 active:to-emerald-800 border-2 border-emerald-400/40 shadow-2xl shadow-emerald-900/40 text-white flex flex-col items-center justify-center p-4 transition duration-75 relative overflow-hidden group">
-          <div class="absolute inset-0 bg-white/5 opacity-0 group-active:opacity-100 transition-opacity pointer-events-none"></div>
-          <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-emerald-900/40 border border-emerald-300/30 flex items-center justify-center mb-3 shadow-inner">
-            <i data-lucide="plus" class="w-10 h-10 sm:w-12 sm:h-12 stroke-[3.5]"></i>
-          </div>
-          <span class="text-xl sm:text-2xl font-black uppercase tracking-wider text-emerald-100">Higher</span>
-          <span class="text-[11px] font-medium text-emerald-200/90 mt-1 uppercase tracking-widest">Positive / Increase</span>
-        </button>
-      </div>
-
-      <!-- Quick Reset to 0 helper link -->
-      <div class="w-full flex justify-between items-center text-xs text-slate-400 px-2">
-        <button id="resetZeroBtn" class="hover:text-indigo-300 underline underline-offset-2 flex items-center gap-1 transition">
-          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Snap to Baseline (0)
-        </button>
-        <span id="dataPointCount" class="font-mono text-slate-500">0 samples logged</span>
       </div>
     </section>
 
-    <!-- ========================================== -->
-    <!-- VIEW 3: POST-SESSION ANALYSIS & EXPORT     -->
-    <!-- ========================================== -->
-    <section id="resultsView" class="w-full bg-slate-800/95 border border-slate-700 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5 hidden">
-      
-      <!-- Session Summary Header -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-700 gap-2">
-        <div>
-          <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Session Completed</span>
-          <h2 class="text-xl font-black text-white mt-1" id="resStudentTitle">ST-01 Rating Trajectory</h2>
-          <p class="text-xs text-slate-400 font-medium" id="resMetadata">Course: -- | Teacher: --</p>
+    <!-- 2. LIVE RATING VIEW -->
+    <section id="liveView" class="hidden flex-1 flex flex-col justify-between select-none">
+      <!-- Session Bar -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-3 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-red-500 animate-ping"></span>
+          <span id="elapsedDisplay" class="font-mono text-xl font-bold tracking-wider text-white">00:00</span>
         </div>
-        <div class="flex items-center space-x-2">
-          <button id="newSessionBtn" class="px-3.5 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-            <i data-lucide="plus-circle" class="w-4 h-4"></i> New Session
+        <div class="flex items-center gap-2">
+          <button id="tagEventBtn" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1">
+            <i data-lucide="flag" class="w-3 h-3 text-amber-400"></i> Mark Moment
+          </button>
+          <button id="finishSessionBtn" class="text-xs bg-red-600 hover:bg-red-500 text-white font-semibold px-3 py-1.5 rounded-lg shadow">
+            Finish
           </button>
         </div>
       </div>
 
-      <!-- Google Drive Sync Status Banner -->
-      <div id="driveStatusBanner" class="p-3.5 rounded-xl border flex items-center justify-between transition-all bg-indigo-950/40 border-indigo-700/60 text-indigo-200 text-xs">
-        <div class="flex items-center space-x-2.5">
-          <div id="driveStatusIcon" class="w-5 h-5 flex items-center justify-center">
-            <i data-lucide="loader" class="w-4 h-4 animate-spin text-indigo-400"></i>
+      <!-- Current Score Indicator Gauge -->
+      <div class="flex flex-col items-center justify-center my-auto py-2">
+        <span class="text-xs font-semibold tracking-wider uppercase text-slate-400 mb-1" id="dimensionLabel">Rating Dimension</span>
+        <div class="relative flex items-center justify-center">
+          <div id="scoreCircle" class="w-24 h-24 rounded-full border-4 border-slate-700 bg-slate-800/80 flex flex-col items-center justify-center shadow-inner transition-colors duration-150">
+            <span id="currentScoreDisplay" class="text-3xl font-black font-mono tracking-tight text-white">0</span>
+            <span id="decayVectorBadge" class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Neutral</span>
           </div>
+        </div>
+        <p class="text-[11px] text-slate-400 mt-2">Tap repeatedly or hold buttons to drive levels</p>
+      </div>
+
+      <!-- Giant Touch Rating Buttons -->
+      <div class="grid grid-cols-2 gap-3 h-64 sm:h-72 safe-bottom">
+        <!-- Negative Red Button -->
+        <button id="btnDecrease" class="touch-btn bg-gradient-to-b from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 active:from-red-800 active:to-red-900 text-white rounded-3xl p-4 flex flex-col items-center justify-between border-2 border-red-500/40 shadow-xl shadow-red-950/40 select-none">
+          <span class="text-xs font-bold uppercase tracking-wider text-rose-200 opacity-80">Decrease (-)</span>
+          <i data-lucide="minus" class="w-16 h-16 stroke-[3]"></i>
+          <span class="text-xs font-mono font-bold bg-black/30 px-3 py-1 rounded-full text-rose-100">Towards -5</span>
+        </button>
+
+        <!-- Positive Green Button -->
+        <button id="btnIncrease" class="touch-btn bg-gradient-to-b from-emerald-600 to-green-700 hover:from-emerald-500 hover:to-green-600 active:from-green-800 active:to-green-900 text-white rounded-3xl p-4 flex flex-col items-center justify-between border-2 border-emerald-500/40 shadow-xl shadow-emerald-950/40 select-none">
+          <span class="text-xs font-bold uppercase tracking-wider text-emerald-200 opacity-80">Increase (+)</span>
+          <i data-lucide="plus" class="w-16 h-16 stroke-[3]"></i>
+          <span class="text-xs font-mono font-bold bg-black/30 px-3 py-1 rounded-full text-emerald-100">Towards +5</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. REPORT & EXPORT VIEW -->
+    <section id="reportView" class="hidden flex-1 flex flex-col gap-4 py-2">
+      <!-- Sync Status Banner -->
+      <div id="syncStatusCard" class="bg-slate-800 border border-slate-700 rounded-2xl p-4 flex items-center gap-3">
+        <div id="syncSpinner" class="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+        <div class="flex-1">
+          <h3 id="syncStatusTitle" class="text-xs font-bold text-white">Syncing to Google Drive...</h3>
+          <p id="syncStatusSubtitle" class="text-[11px] text-slate-400">Archiving CSV data and trajectory charts.</p>
+        </div>
+      </div>
+
+      <!-- Graph 1: Standard Idiodynamic Fluctuation Chart -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4 shadow-lg space-y-2">
+        <div class="flex items-center justify-between">
           <div>
-            <div id="driveStatusTitle" class="font-bold">Syncing to Google Drive...</div>
-            <div id="driveStatusSub" class="text-[11px] text-slate-400">Uploading trajectory data & graph snapshot</div>
+            <h3 class="text-xs font-bold text-white uppercase tracking-wider">1. Idiodynamic Trajectory</h3>
+            <p class="text-[10px] text-slate-400">Continuous second-by-second curve (-5 to +5)</p>
+          </div>
+          <button id="downloadTrajectoryBtn" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-1 rounded-lg flex items-center gap-1">
+            <i data-lucide="download" class="w-3 h-3"></i> PNG
+          </button>
+        </div>
+        <div class="h-48 w-full bg-slate-900 rounded-xl p-1 relative">
+          <canvas id="idiodynamicChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Graph 2: Flat Color Graph -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4 shadow-lg space-y-2">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-xs font-bold text-white uppercase tracking-wider">2. Color Graph</h3>
+            <p class="text-[10px] text-slate-400">Straight timeline indicating levels solely by color hue</p>
+          </div>
+          <button id="downloadColorGraphBtn" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-1 rounded-lg flex items-center gap-1">
+            <i data-lucide="download" class="w-3 h-3"></i> PNG
+          </button>
+        </div>
+        
+        <div class="w-full bg-slate-900 rounded-xl p-3 flex flex-col gap-2">
+          <!-- Canvas for color graph -->
+          <canvas id="colorGraphCanvas" class="w-full h-14 rounded-lg bg-slate-950 border border-slate-800"></canvas>
+          
+          <!-- Legend -->
+          <div class="flex items-center justify-between text-[10px] text-slate-400 px-1 pt-1 font-mono">
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#7f1d1d]"></span> -5 (Dark Red)</span>
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#94a3b8]"></span> 0 (Neutral Gray)</span>
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#1e3a8a]"></span> +5 (Dark Blue)</span>
           </div>
         </div>
-        <button id="retryDriveSyncBtn" class="hidden px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition">
-          Retry Sync
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="grid grid-cols-2 gap-2 mt-auto safe-bottom">
+        <button id="downloadCsvBtn" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-1.5">
+          <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Download CSV
+        </button>
+        <button id="newSessionBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-1.5">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i> New Session
         </button>
       </div>
-
-      <!-- Chart Display Area -->
-      <div class="bg-slate-900 border border-slate-700/80 rounded-xl p-3 sm:p-4">
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <i data-lucide="line-chart" class="w-4 h-4 text-indigo-400"></i>
-            Idiodynamic Fluctuations Over Time
-          </div>
-          <span class="text-[11px] font-mono text-slate-500" id="resPointsCount">0 seconds</span>
-        </div>
-        <div class="relative w-full h-64 sm:h-72">
-          <canvas id="idioChartCanvas"></canvas>
-        </div>
-      </div>
-
-      <!-- Statistical Metrics Grid -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
-        <div class="bg-slate-900/80 border border-slate-700/60 p-2.5 rounded-xl">
-          <div class="text-[10px] uppercase font-bold text-slate-400">Mean Level</div>
-          <div id="statMean" class="text-lg font-black text-indigo-400 font-mono mt-0.5">0.00</div>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-700/60 p-2.5 rounded-xl">
-          <div class="text-[10px] uppercase font-bold text-slate-400">Peak / Lowest</div>
-          <div id="statMinMax" class="text-lg font-black text-emerald-400 font-mono mt-0.5">+0 / –0</div>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-700/60 p-2.5 rounded-xl">
-          <div class="text-[10px] uppercase font-bold text-slate-400">Shifts / Reversals</div>
-          <div id="statShifts" class="text-lg font-black text-amber-400 font-mono mt-0.5">0</div>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-700/60 p-2.5 rounded-xl">
-          <div class="text-[10px] uppercase font-bold text-slate-400">Positive Ratio</div>
-          <div id="statPositivePct" class="text-lg font-black text-white font-mono mt-0.5">0%</div>
-        </div>
-      </div>
-
-      <!-- Stimulated Recall Markers Table (if any) -->
-      <div id="markersSection" class="hidden space-y-2">
-        <div class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-          <i data-lucide="bookmarks" class="w-4 h-4 text-amber-400"></i>
-          Stimulated Recall Qualitative Markers
-        </div>
-        <div class="max-h-36 overflow-y-auto rounded-xl border border-slate-700/80 bg-slate-900/80 p-2 space-y-1.5" id="markersList">
-          <!-- Dynamically populated -->
-        </div>
-      </div>
-
-      <!-- Manual Backup Exports -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
-        <button id="downloadCsvBtn" class="w-full py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition">
-          <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i>
-          <span>Download Raw Data (CSV)</span>
-        </button>
-        <button id="downloadGraphBtn" class="w-full py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition">
-          <i data-lucide="image" class="w-4 h-4 text-indigo-400"></i>
-          <span>Save High-Res Graph (PNG)</span>
-        </button>
-      </div>
-
     </section>
 
   </main>
 
-  <footer class="w-full text-center py-2.5 text-[11px] text-slate-500 border-t border-slate-800">
-    Designed for real-time classroom idiodynamic evaluations &bull; Local storage backed
-  </footer>
-
-  <!-- ============================================================ -->
-  <!-- MODALS: Add Marker, Confirm Stop, Setup Webhook, Help Guide -->
-  <!-- ============================================================ -->
-
-  <!-- Modal 1: Tag Event / Stimulated Recall Marker -->
-  <div id="markerModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
-      <div class="flex items-center space-x-2 text-amber-400">
-        <i data-lucide="flag" class="w-5 h-5"></i>
-        <h3 class="text-base font-bold text-white">Add Stimulated Recall Note</h3>
-      </div>
-      <p class="text-xs text-slate-400">
-        Tag this current moment (<span id="markerTimestampLabel" class="font-mono text-white">00:00</span>) with a qualitative explanation or anchor for the post-class interview.
-      </p>
-      <input type="text" id="markerInput" placeholder="e.g., Teacher shifted to group activity; feeling confused..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
-      <div class="grid grid-cols-2 gap-2 pt-1">
-        <button id="cancelMarkerBtn" class="py-2.5 px-3 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold rounded-xl text-xs transition">Cancel</button>
-        <button id="saveMarkerBtn" class="py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition">Save Tag</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal 2: Confirm Stop Session -->
-  <div id="confirmStopModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl text-center">
-      <div class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/30">
-        <i data-lucide="alert-triangle" class="w-6 h-6"></i>
-      </div>
-      <div>
-        <h3 class="text-base font-bold text-white">End Rating Session?</h3>
-        <p class="text-xs text-slate-400 mt-1">This will finalize recording, calculate statistics, generate the graph, and trigger synchronization.</p>
-      </div>
-      <div class="grid grid-cols-2 gap-2 pt-1">
-        <button id="cancelStopBtn" class="py-2.5 px-3 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold rounded-xl text-xs transition">Continue Rating</button>
-        <button id="confirmStopBtn" class="py-2.5 px-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition">Yes, Finalize</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal 3: Webhook & Cloud Storage Configuration -->
-  <div id="webhookModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 max-w-md w-full space-y-4 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-700 pb-3">
-        <div class="flex items-center space-x-2 text-indigo-400">
-          <i data-lucide="cloud-upload" class="w-5 h-5"></i>
-          <h3 class="text-base font-bold text-white">Google Drive Webhook Endpoint</h3>
-        </div>
-        <button id="closeWebhookModal" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
-      </div>
-      <p class="text-xs text-slate-400 leading-relaxed">
-        Paste your deployed <strong>Google Apps Script Web App URL</strong> below. At the end of each session, CSV data and trajectory charts are POSTed automatically to your Google Drive.
-      </p>
-      <div>
-        <label class="block text-xs font-semibold text-slate-300 mb-1" for="webhookUrlInput">Apps Script Web App Exec URL</label>
-        <input type="url" id="webhookUrlInput" placeholder="https://script.google.com/macros/s/AKfycbx.../exec" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500">
-        <p class="text-[11px] text-slate-500 mt-1">Stored automatically in this device's localStorage.</p>
-      </div>
-      <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-700 text-xs text-slate-400 space-y-1.5">
-        <div class="font-semibold text-slate-300 flex items-center gap-1">
-          <i data-lucide="code" class="w-3.5 h-3.5 text-indigo-400"></i> Need the Google Drive Script?
-        </div>
-        <p class="text-[11px]">Click below to view and copy the Google Apps Script server template for receiving these submissions.</p>
-        <button id="openScriptTemplateBtn" class="text-indigo-400 hover:underline font-medium text-xs">View 2-minute Apps Script code &rarr;</button>
-      </div>
-      <div class="flex justify-end gap-2 pt-1">
-        <button id="saveWebhookBtn" class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition">Save Endpoint</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal 4: Apps Script Code Viewer & Instructions -->
-  <div id="scriptTemplateModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 max-w-lg w-full space-y-3 shadow-2xl max-h-[90vh] flex flex-col">
-      <div class="flex items-center justify-between border-b border-slate-700 pb-2">
-        <h3 class="text-sm font-bold text-white flex items-center gap-2">
-          <i data-lucide="file-code" class="w-4 h-4 text-emerald-400"></i> Google Apps Script Code
-        </h3>
-        <button id="closeScriptModal" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
-      </div>
-      <p class="text-xs text-slate-400">
-        1. Open <a href="https://script.google.com" target="_blank" class="text-indigo-400 underline">script.google.com</a> &gt; New project.<br>
-        2. Paste the code below &gt; Click <strong>Deploy</strong> &gt; <strong>New deployment</strong> &gt; Select type: <strong>Web App</strong>.<br>
-        3. Set <em>Execute as: Me</em>, <em>Who has access: Anyone</em> &gt; Copy Web App URL.
-      </p>
-      <div class="relative flex-1 overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
-        <pre class="p-3 text-[11px] font-mono text-emerald-300 overflow-y-auto max-h-60" id="appsScriptCodeText">function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    var folderName = "Live_Idiodynamic_Research_Data";
-    var folders = DriveApp.getFoldersByName(folderName);
-    var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-    
-    var timePrefix = Utilities.formatDate(new Date(), "GMT+3", "yyyyMMdd_HHmmss");
-    var baseName = timePrefix + "_" + (data.participantId || "Anon") + "_" + (data.dimension || "Rating");
-    
-    // Save CSV
-    var csvFile = folder.createFile(baseName + ".csv", data.csvContent, MimeType.CSV);
-    
-    // Save PNG Graph (if provided)
-    if (data.graphBase64) {
-      var decodedImage = Utilities.base64Decode(data.graphBase64.replace(/^data:image\/(png|jpeg);base64,/, ""));
-      var blob = Utilities.newBlob(decodedImage, MimeType.PNG, baseName + "_Graph.png");
-      folder.createFile(blob);
-    }
-    
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "success",
-      folder: folder.getName(),
-      csvFile: csvFile.getUrl()
-    })).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error",
-      message: err.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}</pre>
-      </div>
-      <button id="copyScriptBtn" class="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
-        <i data-lucide="copy" class="w-4 h-4"></i> Copy Apps Script to Clipboard
-      </button>
-    </div>
-  </div>
-
-  <!-- Toast Notification -->
-  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 z-50 flex items-center gap-2 pointer-events-none">
-    <i data-lucide="check" class="w-4 h-4 text-emerald-400"></i>
-    <span id="toastMessage">Success</span>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- JAVASCRIPT APPLICATION CORE ENGINE                           -->
-  <!-- ============================================================ -->
   <script>
-    // Default preconfigured Google Apps Script Web App Endpoint
-    const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbziecABebJY_1Mjrn9LaiQHbRSiyUEE0aWETH0GemmisGucLnfZSTv93uogF3iqwLV8/exec';
+    lucide.createIcons();
 
-    const State = {
-      // Configuration
-      participantId: '',
-      teacherName: '',
-      courseName: '',
-      dimension: 'Engagement / Interest',
-      scaleMax: 5, // -5 to +5 default
-      scaleMin: -5,
-      maxDurationMinutes: 60,
-      webhookUrl: localStorage.getItem('idiorater_webhook_url') || DEFAULT_WEBHOOK_URL,
+    // App Core State
+    let sessionActive = false;
+    let timerInterval = null;
+    let decayInterval = null;
+    let currentRating = 0;       // Floating continuous value
+    let targetDisplayRating = 0; // Rounded integer for UI
+    let elapsedSeconds = 0;
+    let lastButtonPressTime = 0;
+    let records = [];            // [{ second, time, rating, trigger }]
+    let chartInstance = null;
 
-      // Decay Parameters (Anion / MacIntyre Idiodynamic return to baseline)
-      decayRatePerSec: 0.50, // units per second towards 0
-      decayActive: true,     // active status flag
-      lastButtonPressTime: 0,// ms timestamp of last active user rating tap/hold
-      decayGracePeriodMs: 600, // pause decay briefly after tap before baseline pulls back
+    // DOM Elements
+    const setupView = document.getElementById('setupView');
+    const liveView = document.getElementById('liveView');
+    const reportView = document.getElementById('reportView');
+    const participantInput = document.getElementById('participantInput');
+    const courseInput = document.getElementById('courseInput');
+    const teacherInput = document.getElementById('teacherInput');
+    const dimensionInput = document.getElementById('dimensionInput');
+    const startSessionBtn = document.getElementById('startSessionBtn');
+    const finishSessionBtn = document.getElementById('finishSessionBtn');
+    const tagEventBtn = document.getElementById('tagEventBtn');
+    const elapsedDisplay = document.getElementById('elapsedDisplay');
+    const currentScoreDisplay = document.getElementById('currentScoreDisplay');
+    const decayVectorBadge = document.getElementById('decayVectorBadge');
+    const scoreCircle = document.getElementById('scoreCircle');
+    const btnDecrease = document.getElementById('btnDecrease');
+    const btnIncrease = document.getElementById('btnIncrease');
+    const downloadTrajectoryBtn = document.getElementById('downloadTrajectoryBtn');
+    const downloadColorGraphBtn = document.getElementById('downloadColorGraphBtn');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const newSessionBtn = document.getElementById('newSessionBtn');
 
-      // Active runtime session
-      status: 'SETUP', // 'SETUP' | 'RUNNING' | 'FINISHED'
-      elapsedSeconds: 0,
-      currentRating: 0.0, // Floating representation for smooth sub-second decay
-      timerInterval: null,
-      decayInterval: null,
-      dataRecords: [], // Array of { second, timestamp, rating, rawRating, decayActive, trigger }
-      markers: [],     // Array of { second, timestamp, note, rating }
+    // Parse URL parameters for automatic pre-fill
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('subject')) participantInput.value = params.get('subject');
+    if (params.get('course')) courseInput.value = params.get('course');
+    if (params.get('teacher')) teacherInput.value = params.get('teacher');
+
+    // Helper: Format MM:SS
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    // Color mapper for ratings (-5 to +5)
+    // 0: Neutral Gray (#94a3b8)
+    // +1 to +5: Light blue (#7dd3fc) -> Dark blue (#1e3a8a)
+    // -1 to -5: Light red (#fca5a5) -> Dark red (#7f1d1d)
+    function getRatingColor(val) {
+      if (val === 0) return '#94a3b8';
       
-      // Chart instance
-      chartInstance: null
-    };
-
-    // Check URL parameters for pre-filled webhook or participant
-    (function checkUrlParams() {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.has('webhook')) {
-        State.webhookUrl = urlParams.get('webhook');
-        localStorage.setItem('idiorater_webhook_url', State.webhookUrl);
-      } else if (!localStorage.getItem('idiorater_webhook_url')) {
-        State.webhookUrl = DEFAULT_WEBHOOK_URL;
-        localStorage.setItem('idiorater_webhook_url', DEFAULT_WEBHOOK_URL);
-      }
-      if (urlParams.has('pid')) {
-        document.getElementById('participantId').value = urlParams.get('pid');
-      }
-      if (urlParams.has('course')) {
-        document.getElementById('courseName').value = urlParams.get('course');
-      }
-      if (urlParams.has('teacher')) {
-        document.getElementById('teacherName').value = urlParams.get('teacher');
-      }
-      if (State.webhookUrl) {
-        document.getElementById('webhookUrlInput').value = State.webhookUrl;
-      }
-    })();
-
-    function showToast(msg, isError = false) {
-      const toast = document.getElementById('toast');
-      const toastMsg = document.getElementById('toastMessage');
-      toastMsg.textContent = msg;
-      toast.classList.remove('translate-y-20', 'opacity-0');
-      toast.classList.add('translate-y-0', 'opacity-100');
-      
-      if (isError) {
-        toast.classList.add('border-rose-500', 'bg-rose-950');
+      if (val > 0) {
+        const blues = ['#94a3b8', '#93c5fd', '#60a5fa', '#2563eb', '#1d4ed8', '#1e3a8a'];
+        const idx = Math.min(5, Math.max(1, Math.round(val)));
+        return blues[idx];
       } else {
-        toast.classList.remove('border-rose-500', 'bg-rose-950');
+        const reds = ['#94a3b8', '#fca5a5', '#f87171', '#ef4444', '#b91c1c', '#7f1d1d'];
+        const idx = Math.min(5, Math.max(1, Math.round(Math.abs(val))));
+        return reds[idx];
       }
-
-      setTimeout(() => {
-        toast.classList.add('translate-y-20', 'opacity-0');
-        toast.classList.remove('translate-y-0', 'opacity-100');
-      }, 3000);
     }
 
-    function triggerHaptic(duration = 20) {
-      if ('vibrate' in navigator) {
-        try {
-          navigator.vibrate(duration);
-        } catch (e) {
-          // ignore silent fail on non-supported platforms
+    // Update Live Indicator UI
+    function updateScoreUI() {
+      const displayVal = Math.round(currentRating);
+      currentScoreDisplay.textContent = (displayVal > 0 ? `+${displayVal}` : `${displayVal}`);
+
+      if (displayVal > 0) {
+        scoreCircle.className = "w-24 h-24 rounded-full border-4 border-emerald-500 bg-emerald-950/40 flex flex-col items-center justify-center transition-colors shadow-lg shadow-emerald-900/30";
+        decayVectorBadge.textContent = "↓ Pull to 0";
+        decayVectorBadge.className = "text-[10px] font-bold text-emerald-400";
+      } else if (displayVal < 0) {
+        scoreCircle.className = "w-24 h-24 rounded-full border-4 border-rose-500 bg-rose-950/40 flex flex-col items-center justify-center transition-colors shadow-lg shadow-rose-900/30";
+        decayVectorBadge.textContent = "↑ Pull to 0";
+        decayVectorBadge.className = "text-[10px] font-bold text-rose-400";
+      } else {
+        scoreCircle.className = "w-24 h-24 rounded-full border-4 border-slate-700 bg-slate-800/80 flex flex-col items-center justify-center transition-colors";
+        decayVectorBadge.textContent = "Neutral (0)";
+        decayVectorBadge.className = "text-[10px] font-bold text-slate-400";
+      }
+    }
+
+    // Modify Rating via User Action
+    function adjustRating(delta, triggerName) {
+      if (!sessionActive) return;
+      currentRating = Math.max(SCALE_MIN, Math.min(SCALE_MAX, currentRating + delta));
+      lastButtonPressTime = Date.now();
+      if (navigator.vibrate) navigator.vibrate(25);
+      updateScoreUI();
+    }
+
+    // Button Listeners
+    btnDecrease.addEventListener('touchstart', (e) => { e.preventDefault(); adjustRating(-1, 'Decrease'); });
+    btnDecrease.addEventListener('click', () => adjustRating(-1, 'Decrease'));
+
+    btnIncrease.addEventListener('touchstart', (e) => { e.preventDefault(); adjustRating(1, 'Increase'); });
+    btnIncrease.addEventListener('click', () => adjustRating(1, 'Increase'));
+
+    // Keyboard support
+    window.addEventListener('keydown', (e) => {
+      if (!sessionActive) return;
+      if (e.key === 'v' || e.key === 'ArrowLeft') adjustRating(-1, 'Decrease');
+      if (e.key === 'n' || e.key === 'ArrowRight') adjustRating(1, 'Increase');
+    });
+
+    // Tag event marker
+    tagEventBtn.addEventListener('click', () => {
+      if (!sessionActive) return;
+      if (records.length > 0) {
+        records[records.length - 1].trigger = 'Stimulated Recall Marker';
+        tagEventBtn.classList.add('bg-amber-600');
+        setTimeout(() => tagEventBtn.classList.remove('bg-amber-600'), 500);
+      }
+    });
+
+    // Baseline Decay Engine (runs 10 times a sec for smooth decay)
+    function startDecayEngine() {
+      decayInterval = setInterval(() => {
+        if (!sessionActive) return;
+        // 500ms grace period after touch before decay engages
+        if (Date.now() - lastButtonPressTime < 500) return;
+
+        const decayStep = DECAY_RATE_PER_SEC * 0.1;
+        if (currentRating > 0) {
+          currentRating = Math.max(0, currentRating - decayStep);
+          updateScoreUI();
+        } else if (currentRating < 0) {
+          currentRating = Math.min(0, currentRating + decayStep);
+          updateScoreUI();
         }
-      }
+      }, 100);
     }
 
-    function formatTime(totalSeconds) {
-      const mins = Math.floor(totalSeconds / 60);
-      const secs = totalSeconds % 60;
-      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
+    // Second-by-Second Data Logger
+    function startSessionTimer() {
+      timerInterval = setInterval(() => {
+        elapsedSeconds++;
+        elapsedDisplay.textContent = formatTime(elapsedSeconds);
 
-    const scaleButtons = document.querySelectorAll('.scale-selector-btn');
-    scaleButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        scaleButtons.forEach(b => {
-          b.classList.remove('border-indigo-500', 'bg-indigo-500/20', 'text-indigo-300');
-          b.classList.add('border-slate-700', 'bg-slate-900', 'text-slate-400');
+        records.push({
+          second: elapsedSeconds,
+          time: formatTime(elapsedSeconds),
+          rating: Math.round(currentRating),
+          rawDecay: Number(currentRating.toFixed(2)),
+          trigger: 'Continuous Tick'
         });
-        btn.classList.add('border-indigo-500', 'bg-indigo-500/20', 'text-indigo-300');
-        btn.classList.remove('border-slate-700', 'bg-slate-900', 'text-slate-400');
-        const scaleVal = parseInt(btn.dataset.scale, 10);
-        State.scaleMax = scaleVal;
-        State.scaleMin = -scaleVal;
-      });
-    });
 
-    // Decay Preset Selection Handlers
-    const decayButtons = document.querySelectorAll('.decay-preset-btn');
-    decayButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        decayButtons.forEach(b => {
-          b.classList.remove('border-indigo-500', 'bg-indigo-500/20', 'text-indigo-300', 'font-bold');
-          b.classList.add('border-slate-700', 'bg-slate-800', 'text-slate-400');
-        });
-        btn.classList.add('border-indigo-500', 'bg-indigo-500/20', 'text-indigo-300', 'font-bold');
-        btn.classList.remove('border-slate-700', 'bg-slate-800', 'text-slate-400');
-        
-        const rate = parseFloat(btn.dataset.decay);
-        State.decayRatePerSec = rate;
-        State.decayActive = (rate > 0);
-        const display = document.getElementById('decayRateDisplay');
-        if (display) {
-          display.textContent = rate === 0 ? 'Disabled (Hold)' : `${rate.toFixed(2)} units/sec`;
-        }
-      });
-    });
-
-    // In-session toggle for decay
-    const toggleDecayBtn = document.getElementById('toggleDecayBtn');
-    if (toggleDecayBtn) {
-      toggleDecayBtn.addEventListener('click', () => {
-        if (State.decayRatePerSec === 0) {
-          State.decayRatePerSec = 0.50;
-          State.decayActive = true;
-        } else if (State.decayRatePerSec === 0.50) {
-          State.decayRatePerSec = 1.00;
-          State.decayActive = true;
-        } else if (State.decayRatePerSec === 1.00) {
-          State.decayRatePerSec = 0.00;
-          State.decayActive = false;
-        }
-        updateDecayBadgeUI();
-      });
-    }
-
-    function updateDecayBadgeUI() {
-      const toggleBtn = document.getElementById('toggleDecayBtn');
-      if (!toggleBtn) return;
-      if (!State.decayActive || State.decayRatePerSec === 0) {
-        toggleBtn.textContent = 'Hold (Decay Off)';
-        toggleBtn.className = 'px-2 py-0.5 rounded text-[11px] font-mono bg-slate-700/60 border border-slate-600 text-slate-300 hover:bg-slate-700 transition';
-      } else {
-        toggleBtn.textContent = `Decay: ${State.decayRatePerSec.toFixed(2)}/s`;
-        toggleBtn.className = 'px-2 py-0.5 rounded text-[11px] font-mono bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30 transition';
-      }
-    }
-
-    const dimensionSelect = document.getElementById('ratingDimension');
-    const customDimContainer = document.getElementById('customDimensionContainer');
-    dimensionSelect.addEventListener('change', () => {
-      if (dimensionSelect.value === 'Custom') {
-        customDimContainer.classList.remove('hidden');
-      } else {
-        customDimContainer.classList.add('hidden');
-      }
-    });
-
-    const webhookModal = document.getElementById('webhookModal');
-    const scriptModal = document.getElementById('scriptTemplateModal');
-    const markerModal = document.getElementById('markerModal');
-    const confirmStopModal = document.getElementById('confirmStopModal');
-
-    document.getElementById('webhookSetupBtn').addEventListener('click', () => {
-      document.getElementById('webhookUrlInput').value = State.webhookUrl;
-      webhookModal.classList.remove('hidden');
-    });
-    document.getElementById('closeWebhookModal').addEventListener('click', () => {
-      webhookModal.classList.add('hidden');
-    });
-    document.getElementById('saveWebhookBtn').addEventListener('click', () => {
-      const url = document.getElementById('webhookUrlInput').value.trim();
-      State.webhookUrl = url;
-      localStorage.setItem('idiorater_webhook_url', url);
-      webhookModal.classList.add('hidden');
-      showToast('Google Drive Webhook Saved!');
-    });
-
-    document.getElementById('helpGuideBtn').addEventListener('click', () => {
-      scriptModal.classList.remove('hidden');
-    });
-    document.getElementById('openScriptTemplateBtn').addEventListener('click', () => {
-      webhookModal.classList.add('hidden');
-      scriptModal.classList.remove('hidden');
-    });
-    document.getElementById('closeScriptModal').addEventListener('click', () => {
-      scriptModal.classList.add('hidden');
-    });
-
-    document.getElementById('copyScriptBtn').addEventListener('click', () => {
-      const code = document.getElementById('appsScriptCodeText').innerText;
-      const textArea = document.createElement('textarea');
-      textArea.value = code;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        showToast('Google Apps Script copied to clipboard!');
-      } catch (err) {
-        showToast('Failed to copy, please copy manually', true);
-      }
-      document.body.removeChild(textArea);
-    });
-
-    document.getElementById('startSessionBtn').addEventListener('click', () => {
-      const pId = document.getElementById('participantId').value.trim();
-      const feedback = document.getElementById('setupFeedback');
-
-      if (!pId) {
-        feedback.textContent = 'Please enter a Student / Participant ID before proceeding.';
-        feedback.classList.remove('hidden');
-        return;
-      }
-      feedback.classList.add('hidden');
-
-      State.participantId = pId;
-      State.teacherName = document.getElementById('teacherName').value.trim() || 'N/A';
-      State.courseName = document.getElementById('courseName').value.trim() || 'General Observation';
-      State.maxDurationMinutes = parseInt(document.getElementById('maxDuration').value, 10) || 60;
-      
-      if (dimensionSelect.value === 'Custom') {
-        State.dimension = document.getElementById('customDimension').value.trim() || 'Custom Measure';
-      } else {
-        State.dimension = dimensionSelect.value;
-      }
-
-      startLiveSession();
-    });
-
-    function startLiveSession() {
-      State.status = 'RUNNING';
-      State.elapsedSeconds = 0;
-      State.currentRating = 0.0;
-      State.lastButtonPressTime = 0;
-      State.dataRecords = [];
-      State.markers = [];
-
-      // UI View Transition
-      document.getElementById('setupView').classList.add('hidden');
-      document.getElementById('resultsView').classList.add('hidden');
-      document.getElementById('liveView').classList.remove('hidden');
-
-      // Update scale labels & decay HUD
-      document.getElementById('minScaleLabel').textContent = `${State.scaleMin}`;
-      document.getElementById('maxScaleLabel').textContent = `+${State.scaleMax}`;
-      document.getElementById('liveDimensionBadge').textContent = State.dimension;
-      document.getElementById('headerSubtitle').textContent = `${State.participantId} &bull; ${State.dimension}`;
-      updateDecayBadgeUI();
-      updateMeterDisplay();
-
-      // Log Second 0 baseline point
-      recordTick('INITIAL_START');
-
-      // 1000ms Second-by-Second Real-Time Ticker
-      clearInterval(State.timerInterval);
-      State.timerInterval = setInterval(() => {
-        State.elapsedSeconds += 1;
-        document.getElementById('liveTimer').textContent = formatTime(State.elapsedSeconds);
-        
-        // Record regular continuous second tick
-        recordTick('TICK');
-
-        // Check auto-cap duration
-        if (State.elapsedSeconds >= State.maxDurationMinutes * 60) {
-          finalizeSession();
+        // 60-minute safety threshold
+        if (elapsedSeconds >= 3600) {
+          finishSession();
         }
       }, 1000);
-
-      // 100ms High-Frequency Smooth Gravitational Decay Loop
-      clearInterval(State.decayInterval);
-      State.decayInterval = setInterval(() => {
-        applyBaselineDecay(0.1); // step of 100ms = 0.1s
-      }, 100);
-
-      showToast('Live session active. Tap buttons to rate; ratings will gently decay to baseline.');
     }
 
-    function applyBaselineDecay(deltaSeconds) {
-      if (State.status !== 'RUNNING') return;
-      const badge = document.getElementById('decayVectorBadge');
+    // Start Session
+    startSessionBtn.addEventListener('click', () => {
+      sessionActive = true;
+      elapsedSeconds = 0;
+      currentRating = 0;
+      records = [{
+        second: 0,
+        time: "00:00",
+        rating: 0,
+        rawDecay: 0,
+        trigger: 'Initial'
+      }];
 
-      if (!State.decayActive || State.decayRatePerSec <= 0) {
-        if (badge) badge.classList.add('hidden');
-        return;
-      }
+      document.getElementById('dimensionLabel').textContent = dimensionInput.value || "Dynamic Rating";
+      setupView.classList.add('hidden');
+      liveView.classList.remove('hidden');
+      updateScoreUI();
+      startSessionTimer();
+      startDecayEngine();
+    });
 
-      // Check if within post-tap grace period
-      const now = Date.now();
-      if (now - State.lastButtonPressTime < State.decayGracePeriodMs) {
-        if (badge) badge.classList.add('hidden');
-        return;
-      }
+    // Finish Session & Render Graphs
+    finishSessionBtn.addEventListener('click', finishSession);
 
-      // If already at 0 baseline, nothing to decay
-      if (Math.abs(State.currentRating) < 0.001) {
-        State.currentRating = 0;
-        if (badge) badge.classList.add('hidden');
-        return;
-      }
+    function finishSession() {
+      sessionActive = false;
+      clearInterval(timerInterval);
+      clearInterval(decayInterval);
 
-      if (badge) badge.classList.remove('hidden');
+      liveView.classList.add('hidden');
+      reportView.classList.remove('hidden');
 
-      const step = State.decayRatePerSec * deltaSeconds;
-      if (State.currentRating > 0) {
-        State.currentRating = Math.max(0, State.currentRating - step);
-        if (badge) badge.innerHTML = '&#8595; Decaying to 0';
-      } else if (State.currentRating < 0) {
-        State.currentRating = Math.min(0, State.currentRating + step);
-        if (badge) badge.innerHTML = '&#8593; Decaying to 0';
-      }
-
-      updateMeterDisplay();
+      renderTrajectoryChart();
+      renderColorGraph();
+      triggerDriveUpload();
     }
 
-    function recordTick(trigger = 'TICK') {
-      const nowIso = new Date().toISOString();
-      const roundedRating = Math.round(State.currentRating * 100) / 100;
-      const record = {
-        second: State.elapsedSeconds,
-        timestamp: nowIso,
-        rating: Math.round(State.currentRating), // integer standard for idiodynamics
-        rawRating: roundedRating,               // exact decay float
-        decayActive: (State.decayActive && State.decayRatePerSec > 0),
-        decayRate: State.decayRatePerSec,
-        trigger: trigger
-      };
-      State.dataRecords.push(record);
-      document.getElementById('dataPointCount').textContent = `${State.dataRecords.length} samples logged`;
-      
-      // Auto cache locally for crash protection
-      if (State.elapsedSeconds % 10 === 0) {
-        localStorage.setItem('idiorater_cached_session', JSON.stringify({
-          meta: {
-            participantId: State.participantId,
-            teacher: State.teacherName,
-            course: State.courseName,
-            dimension: State.dimension,
-            scaleMax: State.scaleMax,
-            scaleMin: State.scaleMin,
-            decayRate: State.decayRatePerSec
-          },
-          records: State.dataRecords,
-          markers: State.markers
-        }));
-      }
-    }
+    // Graph 1: Standard Idiodynamic Trajectory
+    function renderTrajectoryChart() {
+      const ctx = document.getElementById('idiodynamicChart').getContext('2d');
+      const labels = records.map(r => r.time);
+      const data = records.map(r => r.rating);
 
-    function updateMeterDisplay() {
-      const pin = document.getElementById('meterPin');
-      const barPos = document.getElementById('meterBarPos');
-      const barNeg = document.getElementById('meterBarNeg');
-      const desc = document.getElementById('meterCurrentDescriptor');
-      const val = State.currentRating;
-      const displayVal = Math.abs(val) < 0.15 ? 0 : (val > 0 ? `+${val.toFixed(1)}` : `${val.toFixed(1)}`);
+      if (chartInstance) chartInstance.destroy();
 
-      // Pin position: maps State.scaleMin ... 0 ... State.scaleMax to 0% ... 50% ... 100%
-      const range = State.scaleMax - State.scaleMin;
-      const clampedVal = Math.max(State.scaleMin, Math.min(State.scaleMax, val));
-      const pct = ((clampedVal - State.scaleMin) / range) * 100;
-      pin.style.left = `${pct}%`;
-      pin.textContent = displayVal;
-
-      // Sub-bars expanding from center 50%
-      if (val > 0.1) {
-        const fillPct = (val / State.scaleMax) * 50;
-        barPos.style.width = `${Math.min(50, fillPct)}%`;
-        barNeg.style.width = '0%';
-        pin.style.backgroundColor = '#22c55e';
-        pin.style.color = '#ffffff';
-        desc.textContent = `High / Positive (+${Math.round(val)})`;
-        desc.className = 'text-emerald-400 font-sans font-medium text-xs';
-      } else if (val < -0.1) {
-        const fillPct = (Math.abs(val) / Math.abs(State.scaleMin)) * 50;
-        barNeg.style.width = `${Math.min(50, fillPct)}%`;
-        barPos.style.width = '0%';
-        pin.style.backgroundColor = '#ef4444';
-        pin.style.color = '#ffffff';
-        desc.textContent = `Low / Negative (${Math.round(val)})`;
-        desc.className = 'text-rose-400 font-sans font-medium text-xs';
-      } else {
-        barPos.style.width = '0%';
-        barNeg.style.width = '0%';
-        pin.style.backgroundColor = '#ffffff';
-        pin.style.color = '#0f172a';
-        desc.textContent = 'Neutral / Baseline (0)';
-        desc.className = 'text-slate-300 font-sans font-medium text-xs';
-      }
-    }
-
-    function adjustRating(delta) {
-      if (State.status !== 'RUNNING') return;
-      State.lastButtonPressTime = Date.now();
-      
-      // If pressing +, increase by 1 whole step
-      let next = State.currentRating + delta;
-      next = Math.max(State.scaleMin, Math.min(State.scaleMax, next));
-      State.currentRating = next;
-      
-      triggerHaptic(delta > 0 ? 30 : 45);
-      updateMeterDisplay();
-    }
-
-    // Touch & Pointer Binding for giant buttons
-    document.getElementById('incrementBtn').addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      adjustRating(1);
-    });
-
-    document.getElementById('decrementBtn').addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      adjustRating(-1);
-    });
-
-    document.getElementById('resetZeroBtn').addEventListener('click', () => {
-      if (State.status !== 'RUNNING') return;
-      State.currentRating = 0;
-      State.lastButtonPressTime = Date.now();
-      triggerHaptic(15);
-      updateMeterDisplay();
-    });
-
-    // Keyboard support for desktop testing (MacIntyre keystrokes: V for minus, N for plus)
-    window.addEventListener('keydown', (e) => {
-      if (State.status !== 'RUNNING') return;
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-      if (e.key === 'v' || e.key === 'V' || e.key === 'ArrowLeft') {
-        adjustRating(-1);
-      } else if (e.key === 'n' || e.key === 'N' || e.key === 'ArrowRight') {
-        adjustRating(1);
-      }
-    });
-
-    const addMarkerBtn = document.getElementById('addMarkerBtn');
-    const markerInput = document.getElementById('markerInput');
-
-    addMarkerBtn.addEventListener('click', () => {
-      document.getElementById('markerTimestampLabel').textContent = formatTime(State.elapsedSeconds);
-      markerInput.value = '';
-      markerModal.classList.remove('hidden');
-      setTimeout(() => markerInput.focus(), 100);
-    });
-
-    document.getElementById('cancelMarkerBtn').addEventListener('click', () => {
-      markerModal.classList.add('hidden');
-    });
-
-    document.getElementById('saveMarkerBtn').addEventListener('click', () => {
-      const note = markerInput.value.trim() || 'Participant marked event';
-      const markerObj = {
-        second: State.elapsedSeconds,
-        timestamp: formatTime(State.elapsedSeconds),
-        rating: State.currentRating,
-        note: note
-      };
-      State.markers.push(markerObj);
-      markerModal.classList.add('hidden');
-      showToast(`Moment tagged at ${markerObj.timestamp}`);
-      // Also flag event in continuous tick stream
-      recordTick(`MARKER: ${note}`);
-    });
-
-    document.getElementById('stopSessionBtn').addEventListener('click', () => {
-      confirmStopModal.classList.remove('hidden');
-    });
-
-    document.getElementById('cancelStopBtn').addEventListener('click', () => {
-      confirmStopModal.classList.add('hidden');
-    });
-
-    document.getElementById('confirmStopBtn').addEventListener('click', () => {
-      confirmStopModal.classList.add('hidden');
-      finalizeSession();
-    });
-
-    function finalizeSession() {
-      clearInterval(State.timerInterval);
-      clearInterval(State.decayInterval);
-      State.status = 'FINISHED';
-
-      // Switch to results view
-      document.getElementById('liveView').classList.add('hidden');
-      document.getElementById('resultsView').classList.remove('hidden');
-
-      // Populate Metadata
-      document.getElementById('resStudentTitle').textContent = `${State.participantId} — ${State.dimension}`;
-      document.getElementById('resMetadata').textContent = `Teacher: ${State.teacherName} | Course: ${State.courseName} | Duration: ${formatTime(State.elapsedSeconds)} | Decay: ${State.decayRatePerSec.toFixed(2)}/s`;
-      document.getElementById('resPointsCount').textContent = `${State.dataRecords.length} recorded data points`;
-
-      computeStatistics();
-      renderIdiodynamicChart();
-      renderMarkersList();
-
-      // Trigger automated Drive Sync
-      dispatchGoogleDriveSync();
-    }
-
-    function computeStatistics() {
-      if (State.dataRecords.length === 0) return;
-
-      const ratings = State.dataRecords.map(r => r.rating);
-      const sum = ratings.reduce((acc, v) => acc + v, 0);
-      const mean = (sum / ratings.length).toFixed(2);
-      const maxVal = Math.max(...ratings);
-      const minVal = Math.min(...ratings);
-
-      // Directional shifts (reversals where delta flips sign)
-      let shifts = 0;
-      let lastDelta = 0;
-      for (let i = 1; i < ratings.length; i++) {
-        const delta = ratings[i] - ratings[i - 1];
-        if (delta !== 0) {
-          if (lastDelta !== 0 && ((delta > 0 && lastDelta < 0) || (delta < 0 && lastDelta > 0))) {
-            shifts++;
-          }
-          lastDelta = delta;
-        }
-      }
-
-      // Percentage time spent positive
-      const positiveTicks = ratings.filter(v => v > 0).length;
-      const positivePct = Math.round((positiveTicks / ratings.length) * 100);
-
-      document.getElementById('statMean').textContent = (mean > 0 ? `+${mean}` : mean);
-      document.getElementById('statMinMax').textContent = `+${maxVal} / ${minVal}`;
-      document.getElementById('statShifts').textContent = shifts;
-      document.getElementById('statPositivePct').textContent = `${positivePct}%`;
-    }
-
-    function renderMarkersList() {
-      const container = document.getElementById('markersSection');
-      const list = document.getElementById('markersList');
-      if (State.markers.length === 0) {
-        container.classList.add('hidden');
-        return;
-      }
-      container.classList.remove('hidden');
-      list.innerHTML = '';
-
-      State.markers.forEach((m, idx) => {
-        const item = document.createElement('div');
-        item.className = 'flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-slate-800/80 border border-slate-700';
-        item.innerHTML = `
-          <div class="flex items-center space-x-2">
-            <span class="font-mono text-amber-400 font-bold">${m.timestamp}</span>
-            <span class="text-slate-200">${m.note}</span>
-          </div>
-          <span class="font-mono font-bold ${m.rating > 0 ? 'text-emerald-400' : m.rating < 0 ? 'text-rose-400' : 'text-slate-400'}">
-            ${m.rating > 0 ? '+' : ''}${m.rating}
-          </span>
-        `;
-        list.appendChild(item);
-      });
-    }
-
-    function renderIdiodynamicChart() {
-      const ctx = document.getElementById('idioChartCanvas').getContext('2d');
-      if (State.chartInstance) {
-        State.chartInstance.destroy();
-      }
-
-      const labels = State.dataRecords.map(r => formatTime(r.second));
-      const dataPoints = State.dataRecords.map(r => r.rating);
-
-      // Marker point annotations
-      const markerSeconds = State.markers.map(m => m.second);
-
-      State.chartInstance = new Chart(ctx, {
+      chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
           labels: labels,
           datasets: [{
-            label: State.dimension,
-            data: dataPoints,
-            borderColor: '#6366f1',
-            borderWidth: 2.5,
+            label: 'Level',
+            data: data,
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+            borderWidth: 2,
+            tension: 0.25,
             fill: {
               target: { value: 0 },
-              above: 'rgba(34, 197, 94, 0.15)', // Green shade above baseline
-              below: 'rgba(239, 68, 68, 0.15)'  // Red shade below baseline
+              above: 'rgba(34, 197, 94, 0.2)',
+              below: 'rgba(239, 68, 68, 0.2)'
             },
-            pointRadius: (ctx) => {
-              const index = ctx.dataIndex;
-              const sec = State.dataRecords[index]?.second;
-              return markerSeconds.includes(sec) ? 6 : 0; // Highlight tagged moments
-            },
-            pointBackgroundColor: (ctx) => {
-              const index = ctx.dataIndex;
-              const sec = State.dataRecords[index]?.second;
-              return markerSeconds.includes(sec) ? '#f59e0b' : '#6366f1';
-            },
-            pointBorderColor: '#ffffff',
-            pointBorderWidth: 1.5,
-            tension: 0.25,
+            pointRadius: 0
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          animation: {
-            duration: 800
-          },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: '#0f172a',
-              titleFont: { family: 'monospace' },
-              borderColor: '#334155',
-              borderWidth: 1,
-              callbacks: {
-                label: (ctx) => `Rating: ${ctx.parsed.y > 0 ? '+' : ''}${ctx.parsed.y}`
-              }
-            }
-          },
           scales: {
-            x: {
-              grid: { color: 'rgba(51, 65, 85, 0.4)' },
-              ticks: {
-                color: '#94a3b8',
-                maxTicksLimit: 10,
-                font: { family: 'monospace', size: 10 }
-              }
-            },
             y: {
-              min: State.scaleMin,
-              max: State.scaleMax,
-              grid: {
-                color: (context) => context.tick.value === 0 ? 'rgba(255, 255, 255, 0.5)' : 'rgba(51, 65, 85, 0.3)',
-                lineWidth: (context) => context.tick.value === 0 ? 2 : 1
-              },
-              ticks: {
-                stepSize: 1,
-                color: (context) => {
-                  if (context.tick.value > 0) return '#4ade80';
-                  if (context.tick.value < 0) return '#f87171';
-                  return '#ffffff';
-                },
-                font: { weight: 'bold', family: 'monospace', size: 11 }
-              }
+              min: -5,
+              max: 5,
+              ticks: { stepSize: 1, color: '#94a3b8' },
+              grid: { color: (c) => c.tick.value === 0 ? '#cbd5e1' : '#334155' }
+            },
+            x: {
+              ticks: { maxTicksLimit: 8, color: '#94a3b8' },
+              grid: { display: false }
             }
-          }
+          },
+          plugins: { legend: { display: false } }
         }
       });
     }
 
-    function generateCsvString() {
-      let csv = 'Second,Time_Elapsed,Rating_Integer,Rating_Raw,Decay_Active,Decay_Rate,Trigger,Participant_ID,Teacher,Course,Dimension,Timestamp\n';
-      State.dataRecords.forEach(r => {
-        const cleanTrigger = `"${(r.trigger || '').replace(/"/g, '""')}"`;
-        const cleanDim = `"${(State.dimension || '').replace(/"/g, '""')}"`;
-        const cleanTeacher = `"${(State.teacherName || '').replace(/"/g, '""')}"`;
-        const cleanCourse = `"${(State.courseName || '').replace(/"/g, '""')}"`;
-        csv += `${r.second},${formatTime(r.second)},${r.rating},${r.rawRating},${r.decayActive},${r.decayRate},${cleanTrigger},"${State.participantId}",${cleanTeacher},${cleanCourse},${cleanDim},"${r.timestamp}"\n`;
+    // Graph 2: Straight Line Color Graph
+    function renderColorGraph() {
+      const canvas = document.getElementById('colorGraphCanvas');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const width = rect.width;
+      const height = rect.height;
+      const centerY = height / 2;
+
+      ctx.clearRect(0, 0, width, height);
+
+      if (records.length < 2) return;
+
+      const step = width / (records.length - 1);
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+
+      for (let i = 0; i < records.length - 1; i++) {
+        const x1 = i * step;
+        const x2 = (i + 1) * step;
+        const rating = records[i].rating;
+
+        ctx.strokeStyle = getRatingColor(rating);
+        ctx.beginPath();
+        ctx.moveTo(x1, centerY);
+        ctx.lineTo(x2, centerY);
+        ctx.stroke();
+      }
+    }
+
+    // Generate CSV Content
+    function generateCSV() {
+      let csv = "Second,Time,Rating,DecayValue,Trigger\n";
+      records.forEach(r => {
+        csv += `${r.second},${r.time},${r.rating},${r.rawDecay},"${r.trigger}"\n`;
       });
       return csv;
     }
 
-    async function dispatchGoogleDriveSync() {
-      const banner = document.getElementById('driveStatusBanner');
-      const title = document.getElementById('driveStatusTitle');
-      const sub = document.getElementById('driveStatusSub');
-      const icon = document.getElementById('driveStatusIcon');
-      const retryBtn = document.getElementById('retryDriveSyncBtn');
+    // Download CSV locally
+    downloadCsvBtn.addEventListener('click', () => {
+      const blob = new Blob([generateCSV()], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `IdioRater_${participantInput.value || 'Anonymous'}_${Date.now()}.csv`;
+      a.click();
+    });
 
-      if (!State.webhookUrl) {
-        banner.className = 'p-3.5 rounded-xl border flex items-center justify-between transition-all bg-amber-950/40 border-amber-700/60 text-amber-200 text-xs';
-        icon.innerHTML = '<i data-lucide="alert-circle" class="w-4 h-4 text-amber-400"></i>';
-        title.textContent = 'Drive Webhook Not Configured';
-        sub.textContent = 'Data is safely stored locally. Tap Cloud icon above to connect your script.';
-        retryBtn.classList.remove('hidden');
-        retryBtn.textContent = 'Configure URL';
-        retryBtn.onclick = () => webhookModal.classList.remove('hidden');
-        lucide.createIcons();
-        return;
-      }
+    // Download Trajectory PNG
+    downloadTrajectoryBtn.addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = chartInstance.toBase64Image();
+      a.download = `Idiodynamic_Trajectory_${participantInput.value || 'Anonymous'}.png`;
+      a.click();
+    });
 
-      banner.className = 'p-3.5 rounded-xl border flex items-center justify-between transition-all bg-indigo-950/40 border-indigo-700/60 text-indigo-200 text-xs';
-      icon.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin text-indigo-400"></i>';
-      title.textContent = 'Saving to Google Drive...';
-      sub.textContent = 'Transmitting CSV and idiodynamic graph to your Apps Script Web App';
-      retryBtn.classList.add('hidden');
-      lucide.createIcons();
+    // Download Color Graph PNG
+    downloadColorGraphBtn.addEventListener('click', () => {
+      const canvas = document.getElementById('colorGraphCanvas');
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = `Color_Graph_${participantInput.value || 'Anonymous'}.png`;
+      a.click();
+    });
 
-      try {
-        const csvContent = generateCsvString();
-        // Export chart canvas to Base64 image
-        const graphBase64 = State.chartInstance ? State.chartInstance.toBase64Image('image/png', 1.0) : '';
+    // Google Drive Webhook Auto-Sync
+    function triggerDriveUpload() {
+      const statusTitle = document.getElementById('syncStatusTitle');
+      const statusSubtitle = document.getElementById('syncStatusSubtitle');
+      const spinner = document.getElementById('syncSpinner');
 
-        const payload = {
-          participantId: State.participantId,
-          teacher: State.teacherName,
-          course: State.courseName,
-          dimension: State.dimension,
-          durationSeconds: State.elapsedSeconds,
-          decayRate: State.decayRatePerSec,
-          csvContent: csvContent,
-          graphBase64: graphBase64,
-          markers: State.markers
-        };
+      const payload = {
+        subjectId: participantInput.value || "Anonymous",
+        course: courseInput.value || "Classroom",
+        teacher: teacherInput.value || "Teacher",
+        dimension: dimensionInput.value || "Rating",
+        csvContent: generateCSV(),
+        graphImageBase64: chartInstance.toBase64Image(),
+        colorGraphBase64: document.getElementById('colorGraphCanvas').toDataURL('image/png')
+      };
 
-        await fetch(State.webhookUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
-          },
-          body: JSON.stringify(payload)
-        });
-
-        banner.className = 'p-3.5 rounded-xl border flex items-center justify-between transition-all bg-emerald-950/40 border-emerald-700/60 text-emerald-200 text-xs';
-        icon.innerHTML = '<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>';
-        title.textContent = 'Successfully Uploaded to Google Drive';
-        sub.textContent = 'Saved to "Live_Idiodynamic_Research_Data" folder in your Drive.';
-        retryBtn.classList.add('hidden');
-        showToast('Google Drive sync successful!');
-      } catch (error) {
-        console.error('Google Drive submission error:', error);
-        banner.className = 'p-3.5 rounded-xl border flex items-center justify-between transition-all bg-rose-950/40 border-rose-700/60 text-rose-200 text-xs';
-        icon.innerHTML = '<i data-lucide="cloud-off" class="w-4 h-4 text-rose-400"></i>';
-        title.textContent = 'Automatic Drive Sync Failed';
-        sub.textContent = 'Network or endpoint issue. Use manual download buttons below.';
-        retryBtn.classList.remove('hidden');
-        retryBtn.textContent = 'Retry Upload';
-        retryBtn.onclick = dispatchGoogleDriveSync;
-      }
-      lucide.createIcons();
+      fetch(PRECONFIGURED_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(res => {
+        spinner.className = "w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white";
+        spinner.innerHTML = "✓";
+        statusTitle.textContent = "Synced to Google Drive!";
+        statusSubtitle.textContent = "Archived to Live_Idiodynamic_Research_Data";
+      })
+      .catch(err => {
+        spinner.className = "w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center text-white";
+        spinner.innerHTML = "!";
+        statusTitle.textContent = "Offline / Local Save Ready";
+        statusSubtitle.textContent = "Use buttons below to download CSV & Graphs manually.";
+      });
     }
 
-    document.getElementById('downloadCsvBtn').addEventListener('click', () => {
-      const csvData = generateCsvString();
-      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      const timeStr = new Date().toISOString().replace(/[:.]/g, '-');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `IdioData_${State.participantId}_${timeStr}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast('CSV downloaded to device');
+    // Reset for New Session
+    newSessionBtn.addEventListener('click', () => {
+      reportView.classList.add('hidden');
+      setupView.classList.remove('hidden');
     });
-
-    document.getElementById('downloadGraphBtn').addEventListener('click', () => {
-      if (!State.chartInstance) return;
-      const imageUrl = State.chartInstance.toBase64Image('image/png', 1.0);
-      const link = document.createElement('a');
-      const timeStr = new Date().toISOString().replace(/[:.]/g, '-');
-      link.setAttribute('href', imageUrl);
-      link.setAttribute('download', `IdioGraph_${State.participantId}_${timeStr}.png`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast('Graph image saved to device');
-    });
-
-    document.getElementById('newSessionBtn').addEventListener('click', () => {
-      document.getElementById('resultsView').classList.add('hidden');
-      document.getElementById('setupView').classList.remove('hidden');
-      document.getElementById('headerSubtitle').textContent = 'Second-by-Second Dynamic Evaluation';
-    });
-
-    // Initialize all Lucide icons on page load
-    lucide.createIcons();
   </script>
 </body>
 </html>
